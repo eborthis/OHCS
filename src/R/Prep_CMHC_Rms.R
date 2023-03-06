@@ -7,17 +7,17 @@ library(tidyr)
 
 #Initializing static variables
 survey_str <- "Rms"
-series_list <- c("Vacancy Rates", "Average Rent", "Average Rent Change", "Median Rent", "Rental Universe")
+series_list <- c("Vacancy Rate", "Average Rent", "Average Rent Change", "Median Rent", "Rental Universe")
 dimension_str <- "Bedroom Type"
-vac_dim_list <- c("Bedroom Type", "Structure Type", "Rent Ranges")
+vac_dim_list <- c("Bedroom Type", "Structure Size", "Rent Ranges")
 breakdown_str <- "Historical Time Periods"
 muni_vec <- c("5921007" = "Nanaimo", "5917030" = "Oak Bay",
               "5917034" = "Victoria", "5915004" = "Surrey",
               "5915022" = "Vancouver", "5915025" = "Burnaby",
               "5915034" = "Coquitlam", "5915043" = "Port Moody",
               "5915055" = "West Vancouver", "5915075" = "Maple Ridge")
-d_filter <- "Row/ Apartment"
-ranges_filter_list <- c("Bachelor", "1 Bedroom", "2 Bedroom", "3 Bedroom +", "Total")
+d_filter <- "Row / Apartment"
+r_filter <- "Total"
 season_filter <- "October"
 category_str <- "Primary Rental Market"
 update_str <- Sys.Date()
@@ -31,6 +31,8 @@ export_table_cols <- c("Classification", "Municipality", "Date_Range", "Bachelor
 combined_R_CMHC <- data.frame(matrix(nrow = 0, ncol = length(export_table_cols)))
 colnames(combined_R_CMHC) <- export_table_cols
 
+bedroom_types <- c("Bachelor", "1 Bedroom", "2 Bedroom", "3 Bedroom +", "Total")
+
 #Range Table
 range_table_cols <- c("Classification", "Municipality", "Date_Range", "Range_Less_Than_750", "Reliability_Code_750", "Range_750_999", "Reliability_Code_750_999",
                       "Range_1000_1249","Reliability_Code_1000_1249", "Range_1250_1499","Reliability_Code_1250_1499","Range_1500_plus", "Reliability_Code_1500",
@@ -38,6 +40,7 @@ range_table_cols <- c("Classification", "Municipality", "Date_Range", "Range_Les
                       "Category", "Row/Apartment", "Data_Source", "_lastupdate")
 range_R_CMHC <- data.frame(matrix(nrow = 0, ncol = length(range_table_cols)))
 colnames(range_R_CMHC) <- range_table_cols
+range_types <- c("Less Than $750", "$750 - $999", "$1,000 - $1,249", "$1,250 - $1,499", "Total")
 
 #Structure Size Table
 structure_table_cols <- c("Classification", "Municipality", "Date_Range", "Units_3_5", "Reliability_Code_3_5", "Units_6_19", "Reliability_Code_6_19",
@@ -46,6 +49,171 @@ structure_table_cols <- c("Classification", "Municipality", "Date_Range", "Units
 structure_R_CMHC <- data.frame(matrix(nrow = 0, ncol = length(structure_table_cols)))
 colnames(structure_R_CMHC) <- structure_table_cols
 
+structure_types <- c("3-5 Units", "6-19 Units", "20-49 Units", "50-199 Units", "Total")
+
+#a - Excellent, b- Very good, c - Good, d - Fair (Use with Caution)
+#replace reliability strings with original scores
+replace_rel <- function(in_rel)
+{
+  if(is.na(in_rel))
+  {
+    return(NA)
+    
+  } else if (in_rel == "Excellent")
+  {
+    return("a")
+  } else if (in_rel == "Very good")
+  {
+    return("b")
+  } else if (in_rel == "Good")
+  {
+    return("c")
+  } else if (in_rel == "Fair (Use with Caution)")
+  {
+    return("d")
+  } else
+  {
+    return(NA)
+  }
+}
+
+
+#function to take input table from cmhc and put into final table for export
+#only from 2012-2022
+#in_type is a list of value header strings
+#in_table is the input table from get_cmhc()
+#out_type is a string of the dimension variable
+build_table <- function(in_type, in_table, in_master_table, out_type)
+{
+  five_ch <- FALSE
+  six_ch <- FALSE
+  
+  for (e in 1:nrow(in_table))
+  {
+    at_total <- FALSE
+    
+    #get dateString year value
+    date_str <- in_table$DateString[e]
+    date_vec <- strsplit(date_str, split = ' ')
+    date_num <- as.numeric(date_vec[[1]][1])
+    date_month <- date_vec[[1]][2]
+    
+    if (date_num >= 2012 & date_num < 2023)
+    {
+      current_bed_type <- as.character(in_table[[4]][e])
+      current_val <- in_table$Value[e]
+      if("Quality" %in% colnames(in_table))
+      {
+        current_rel <- as.character(in_table$Quality[e])
+      } else
+      {
+        current_rel <- NA
+      }
+      #apply values to different Room types
+      
+      if(current_bed_type == in_type[1])
+      {
+        one_val <- current_val
+        one_rel <- replace_rel(current_rel)
+        
+      } else if(current_bed_type == in_type[2])
+      {
+        two_val <- current_val
+        two_rel <- replace_rel(current_rel)
+        
+      } else if(current_bed_type == in_type[3])
+      {
+        three_val <- current_val
+        three_rel <- replace_rel(current_rel)
+        
+      } else if(current_bed_type == in_type[4])
+      {
+        four_val <- current_val
+        four_rel <- replace_rel(current_rel)
+        
+      }
+      if (length(in_type) > 4)
+      {
+        if(current_bed_type == in_type[5])
+        {
+          five_val <- current_val
+          five_rel <- replace_rel(current_rel)
+          five_ch <- TRUE
+        }
+      }
+      if (length(in_type) > 5)
+      {
+        if(current_bed_type == in_type[6])
+        {
+          six_val <- current_val
+          six_rel <- replace_rel(current_rel)
+          six_ch <- TRUE
+        }
+      }
+      if(current_bed_type == "Total")
+      {
+        tot_val <- current_val
+        tot_rel <- replace_rel(current_rel)
+        at_total <- TRUE
+        
+      }
+      #every time we get to Total create new row
+      if (at_total)
+      {
+        #how can I do this for the different tables?
+        if(out_type == "Structure Size")
+        {
+          if (!five_ch)
+          {
+            five_val <- NA
+            five_rel <- NA
+          }
+          new_row <- c(series_str, muni_name, date_num, one_val, one_rel,
+                       two_val, two_rel, three_val, three_rel, four_val, four_rel, five_val, five_rel, tot_val, tot_rel,
+                       "Primary Rental Market", d_filter, "CMHC", update_str)
+          
+          in_master_table[nrow(in_master_table) + 1,] <- new_row
+          
+        } else if (out_type == "Rent Ranges")
+        {
+          
+          if (!five_ch)
+          {
+            five_val <- NA
+            five_rel <- NA
+          }
+          
+          if (!six_ch)
+          {
+            six_val <- NA
+            six_rel <- NA
+          }
+          new_row <- c(series_str, muni_name, date_num, one_val, one_rel,
+                       two_val, two_rel, three_val, three_rel, four_val, four_rel, five_val, five_rel,
+                       six_val, six_rel, tot_val, tot_rel, "Primary Rental Market", d_filter, "CMHC", update_str)
+          
+          in_master_table[nrow(in_master_table) + 1,] <- new_row
+          
+        } else
+        {
+          
+          new_row <- c(series_str, muni_name, date_num, one_val, one_rel,
+                       two_val, two_rel, three_val, three_rel, four_val, four_rel, tot_val, tot_rel,
+                       "Primary Rental Market", d_filter, "CMHC", update_str)
+          
+          in_master_table[nrow(in_master_table) + 1,] <- new_row
+          
+        }
+        at_total <- FALSE
+        five_ch <- FALSE
+        six_ch <- FALSE
+      }
+    }
+  }
+  return(in_master_table)
+}
+
+#----Main Function----------------
 #Iterate Through Municipality
 for(a in muni_vec)
 {
@@ -54,178 +222,69 @@ for(a in muni_vec)
   muni_name <- muni_vec[muni_index]
   
   #Iterate through Series
-  for (series in series_list)
+  for (series_str in series_list)
   {
     #different path for vacancy rates
-    if(series == "Vacancy Rates")
+    if(series_str == "Vacancy Rate")
     {
       for (vac_dim in vac_dim_list)
       {
         #more filters for rent ranges
         if (vac_dim == "Rent Ranges")
         {
-          for (r_filter in ranges_filter_list)
-          {
-            #get CMHC
-            current_table <- get_cmhc(survey_str, series, vac_dim, breakdown_str, "Default", muni_ID,
-                                      filters = list("dwelling_type_desc_en" = d_filter, "season" = "October", "bedroom_count_type_desc_en" = r_filter))
-            #Build Rent Ranges Table
-            for (f in 1:nrow(current_table))
-            {
-              #get dateString year value
-              date_str <- current_table$DateString[f]
-              date_vec <- strsplit(date_str, split = ' ')
-              date_num <- as.numeric(date_vec[[1]][2])
-              date_month <- date_vec[[1]][1]
-              
-              if (date_num >= 2012 & date_num < 2023)
-              {
-                current_range <- as.character(current_table$`Rent Ranges`[f])
-                current_val <- current_table$Value[f]
-                current_rel <- current_table$Quality[f]
-                
-                #record value for each rent range
-                if (current_range == "Less Than $750")
-                {
-                  seven_val <- current_val
-                  seven_rel <- current_rel
-                  
-                } else if (current_range == "$750 - $999")
-                {
-                  s_to_n_val <- current_val
-                  s_to_n_rel <- current_rel
-                  
-                } else if (current_range == "$1,000 - $1,249")
-                {
-                  th_to_tw_val <- current_val
-                  th_to_tw_rel <- current_rel
-                  
-                } else if (current_range == "$1,250 - $1,499")
-                {
-                  tw_to_fi_val <- current_val
-                  tw_to_fi_rel <- current_rel
-                  
-                } else if (current_range == "Total")
-                {
-                  total_val <- current_val
-                  total_rel <- current_rel
-                }
-                #every time we get to Total create new row
-                if (current_bed_type == "Total")
-                {
-                  new_row <- c(series, muni_name, date_num, seven_val, seven_rel, s_to_n_val, s_to_n_rel, 
-                               th_to_tw_val, th_to_tw_rel, tw_to_fi_val, tw_to_fi_rel, total_val, total_rel,
-                               "Primary Rental Market", d_filter, "CMHC", update_str)
-                  
-                  range_R_CMHC[nrow(range_R_CMHC) + 1] <- new_row
-                  
-                }
-              }
-            }
-          }
+          
+          print(paste("Downloading", survey_str, series_str, vac_dim,breakdown_str, muni_ID, d_filter, r_filter))
+          #get CMHC
+          current_table <- get_cmhc(survey_str, series_str, vac_dim, breakdown_str, "Default", muni_ID,
+                                    filters = list("dwelling_type_desc_en" = d_filter, "season" = "October", "bedroom_count_type_desc_en" = r_filter))
+          #Build Rent Ranges Table
+          range_R_CMHC <- build_table(range_types,current_table, range_R_CMHC, vac_dim)
+          
         } else if (vac_dim == "Structure Size")
         {
-          
-          current_table <- get_cmhc(survey_str, series, vac_dim, breakdown_str, "Default", muni_ID,
+          print(paste("Downloading", survey_str, series_str, vac_dim,breakdown_str, muni_ID, d_filter))
+          current_table <- get_cmhc(survey_str, series_str, vac_dim, breakdown_str, "Default", muni_ID,
                                     filters = list("dwelling_type_desc_en" = d_filter, "season" = "October"))
+  
           #build Structure Size table
-          for (g in 1:nrow(current_table))
-          {
-            #get dateString year value
-            date_str <- current_table$DateString[g]
-            date_vec <- strsplit(date_str, split = ' ')
-            date_num <- as.numeric(date_vec[[1]][2])
-            date_month <- date_vec[[1]][1]
-            
-            if (date_num >= 2012 & date_num < 2023)
-            {
-              current_range <- as.character(current_table$`Structure Size`[g])
-              current_val <- current_table$Value[g]
-              current_rel <- current_table$Quality[g]
-            }
-          }
-        
+          structure_R_CMHC <- build_table(structure_types, current_table, structure_R_CMHC, vac_dim)
+          
         } else
         {
-          
-          current_table <- get_cmhc(survey_str, series, vac_dim, breakdown_str, "Default", muni_ID,
+          print(paste("Downloading", survey_str, series_str, dimension_str,breakdown_str, muni_ID, d_filter))
+          current_table <- get_cmhc(survey_str, series_str, vac_dim, breakdown_str, "Default", muni_ID,
                                     filters = list("dwelling_type_desc_en" = d_filter, "season" = "October"))
           #Run table method
-          build_table()
+          combined_R_CMHC <- build_table(bedroom_types, current_table,combined_R_CMHC, vac_dim)
     
         }
       }
       
     } else
     {
-      
-      current_table <- get_cmhc(survey_str, series, dimension_str, breakdown_str, "Default", muni_ID,
+      print(paste("Downloading", survey_str, series_str, dimension_str,breakdown_str, muni_ID, d_filter))
+      current_table <- get_cmhc(survey_str, series_str, dimension_str, breakdown_str, "Default", muni_ID,
                                 filters = list("dwelling_type_desc_en" = d_filter, "season" = "October"))
       #Run Table method
-      build_table()
+      combined_R_CMHC <- build_table(bedroom_types, current_table, combined_R_CMHC, "other")
       
     }
   }
 }
 
-#function to take input table from cmhc and put into final table for export
-#only from 2012-2022
-#might have to build something else for structure size and rent ranges because they have different fields
-build_table <- function()
-{
-  for (e in 1:nrow(current_table))
-  {
-    #get dateString year value
-    date_str <- current_table$DateString[e]
-    date_vec <- strsplit(date_str, split = ' ')
-    date_num <- as.numeric(date_vec[[1]][2])
-    date_month <- date_vec[[1]][1]
-    
-    if (date_num >= 2012 & date_num < 2023)
-    {
-      current_bed_type <- as.character(current_table$`Bedroom Type`[e])
-      current_val <- current_table$Value[e]
-      current_rel <- as.character(current_table$Quality[e])
-      #apply values to different Room types
-      if(current_bed_type == "Bachelor")
-      {
-        bach_val <- current_val
-        bach_rel <- current_rel
-        
-      } else if(current_bed_type == "1 Bedroom")
-      {
-        one_val <- current_val
-        one_rel <- current_rel
-      
-      } else if(current_bed_type == "2 Bedroom")
-      {
-        two_val <- current_val
-        one_rel <- current_rel
-        
-      } else if(current_bed_type == "3 Bedroom +")
-      {
-        three_val <- current_val
-        three_rel <- current_rel
-        
-      } else if(current_bed_type == "Total")
-      {
-        tot_val <- current_val
-        tot_rel <- current_rel
-        
-      }
-      #every time we get to Total create new row
-      if (current_bed_type == "Total")
-      {
-        new_row <- c(series, muni_name, date_num, bach_val, bach_rel, one_val, one_rel,
-                     two_val, two_rel, three_val, three_rel, tot_val, tot_rel,
-                     "Primary Rental Market", d_filter, "CMHC", update_str)
-        
-        combined_R_CMHC[nrow(combined_R_CMHC) + 1] <- new_row
-        
-      }
-    }
-  }
-}
+print("Completed Table Downloads")
+
+#export 3 tables
+bed_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM.csv"
+range_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM_Rent_Ranges.csv"
+structure_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM_Structure_Size.csv"
+
+write.csv(combined_R_CMHC,bed_file_name,row.names = FALSE)
+write.csv(range_R_CMHC,range_file_name,row.names = FALSE)
+write.csv(structure_R_CMHC,structure_file_name,row.names = FALSE)
+
+print("Exported CSVs")
+
 
 
 
