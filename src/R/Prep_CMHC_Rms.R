@@ -7,7 +7,7 @@ library(tidyr)
 
 #Initializing static variables
 survey_str <- "Rms"
-series_list <- c("Vacancy Rate", "Average Rent", "Average Rent Change", "Median Rent", "Rental Universe")
+series_list <- c("Vacancy Rate", "Average Rent", "Average Rent Change", "Median Rent", "Rental Universe", "Summary Statistics")
 dimension_str <- "Bedroom Type"
 vac_dim_list <- c("Bedroom Type", "Structure Size", "Rent Ranges")
 breakdown_str <- "Historical Time Periods"
@@ -18,6 +18,7 @@ muni_vec <- c("5921007" = "Nanaimo", "5917030" = "Oak Bay",
               "5915055" = "West Vancouver", "5915075" = "Maple Ridge")
 d_filter <- "Row / Apartment"
 r_filter <- "Total"
+bed_filter_list <- c("Bachelor", "1 Bedroom", "2 Bedroom", "3 Bedroom +", "Total")
 season_filter <- "October"
 category_str <- "Primary Rental Market"
 update_str <- Sys.Date()
@@ -50,6 +51,15 @@ structure_R_CMHC <- data.frame(matrix(nrow = 0, ncol = length(structure_table_co
 colnames(structure_R_CMHC) <- structure_table_cols
 
 structure_types <- c("3-5 Units", "6-19 Units", "20-49 Units", "50-199 Units", "Total")
+
+#Summary Table
+summary_table_cols <- c("Classification", "Municipality", "Date_Range", "Vacancy Rate_Percent", "Reliability_Code_vacrate", "Availability_Rate_Percent",
+                        "Reliability_Code_avlrate", "Average_Rent", "Reliability_Code_avgrent", "Median_Rent", "Reliability_Code_medrent",
+                        "Percent_Change", "Reliability_Code_perchg", "Units","Category", "Row/Apartment", "Data_Source", "_lastupdate")
+summary_R_CMHC <- data.frame(matrix(nrow = 0, ncol = length(summary_table_cols)))
+colnames(summary_R_CMHC) <- summary_table_cols
+
+summary_types <- c("Vacancy Rate (%)", "Availability Rate (%)", "Average Rent ($)", "Median Rent ($)", "% Change", "Units")
 
 #a - Excellent, b- Very good, c - Good, d - Fair (Use with Caution)
 #replace reliability strings with original scores
@@ -150,7 +160,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
           six_ch <- TRUE
         }
       }
-      if(current_bed_type == "Total")
+      if(current_bed_type == "Total" | current_bed_type == "Units")
       {
         tot_val <- current_val
         tot_rel <- replace_rel(current_rel)
@@ -192,6 +202,19 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
                        two_val, two_rel, three_val, three_rel, four_val, four_rel, five_val, five_rel,
                        six_val, six_rel, tot_val, tot_rel, "Primary Rental Market", d_filter, "CMHC", update_str)
           
+          in_master_table[nrow(in_master_table) + 1,] <- new_row
+          
+        } else if (out_type == "Summary Statistics")
+        {
+          if (!five_ch)
+          {
+            five_val <- NA
+            five_rel <- NA
+          }
+          
+          new_row <- c(series_str, muni_name, date_num, one_val, one_rel,
+                       two_val, two_rel, three_val, three_rel, four_val, four_rel, five_val, five_rel, tot_val, tot_rel,
+                       "Primary Rental Market", d_filter, "CMHC", update_str)
           in_master_table[nrow(in_master_table) + 1,] <- new_row
           
         } else
@@ -259,7 +282,17 @@ for(a in muni_vec)
     
         }
       }
-      
+    } else if (series_str == "Summary Statistics")
+    {
+      for (bed_str in bed_filter_list)
+      {
+        print(paste("Downloading", survey_str, series_str,breakdown_str, muni_ID, bed_str, d_filter))
+        current_table <- get_cmhc(survey_str, series_str, NA, breakdown_str, "Default", muni_ID,
+                                  filters = list("dwelling_type_desc_en" = d_filter, "season" = "October", "bedroom_count_type_desc_en" = bed_str))
+        
+        #Run Table Method
+        summary_R_CMHC <- build_table(summary_types, current_table, summary_R_CMHC, series_str)
+      }
     } else
     {
       print(paste("Downloading", survey_str, series_str, dimension_str,breakdown_str, muni_ID, d_filter))
@@ -275,13 +308,15 @@ for(a in muni_vec)
 print("Completed Table Downloads")
 
 #export 3 tables
-bed_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM.csv"
-range_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM_Rent_Ranges.csv"
-structure_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/New_Housing_Construction/Merged/CMHC_PRM_Structure_Size.csv"
+bed_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM.csv"
+range_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM_Rent_Ranges.csv"
+structure_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM_Structure_Size.csv"
+summary_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM_Sum_Stats.csv"
 
-write.csv(combined_R_CMHC,bed_file_name,row.names = FALSE)
-write.csv(range_R_CMHC,range_file_name,row.names = FALSE)
-write.csv(structure_R_CMHC,structure_file_name,row.names = FALSE)
+write.csv(combined_R_CMHC, bed_file_name, row.names = FALSE)
+write.csv(range_R_CMHC, range_file_name, row.names = FALSE)
+write.csv(structure_R_CMHC, structure_file_name, row.names = FALSE)
+write.csv(summary_R_CMHC, summary_file_name, row.names = FALSE)
 
 print("Exported CSVs")
 
