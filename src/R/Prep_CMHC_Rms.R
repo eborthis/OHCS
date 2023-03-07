@@ -62,7 +62,7 @@ colnames(summary_R_CMHC) <- summary_table_cols
 summary_types <- c("Vacancy Rate (%)", "Availability Rate (%)", "Average Rent ($)", "Median Rent ($)", "% Change", "Units")
 
 #a - Excellent, b- Very good, c - Good, d - Fair (Use with Caution)
-#replace reliability strings with original scores
+#replace reliability strings with original scores from cmhc
 replace_rel <- function(in_rel)
 {
   if(is.na(in_rel))
@@ -100,7 +100,8 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
   
   for (e in 1:nrow(in_table))
   {
-    at_total <- FALSE
+    
+    at_total <- FALSE #when TRUE the new_row is considered complete and can add to table
     
     #get dateString year value
     date_str <- in_table$DateString[e]
@@ -110,8 +111,11 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
     
     if (date_num >= 2012 & date_num < 2023)
     {
+      #pull Value classification and value
       current_bed_type <- as.character(in_table[[4]][e])
       current_val <- in_table$Value[e]
+      
+      #get reliability string from the Quality column
       if("Quality" %in% colnames(in_table))
       {
         current_rel <- as.character(in_table$Quality[e])
@@ -119,8 +123,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
       {
         current_rel <- NA
       }
-      #apply values to different Room types
-      
+      #apply values to the different Room types defined in in_type list
       if(current_bed_type == in_type[1])
       {
         one_val <- current_val
@@ -142,6 +145,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
         four_rel <- replace_rel(current_rel)
         
       }
+      #some tables don't have as many room types so these if statements need to be protected
       if (length(in_type) > 4)
       {
         if(current_bed_type == in_type[5])
@@ -151,6 +155,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
           five_ch <- TRUE
         }
       }
+      
       if (length(in_type) > 5)
       {
         if(current_bed_type == in_type[6])
@@ -160,6 +165,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
           six_ch <- TRUE
         }
       }
+      #Final row for each column, see at_total being set to TRUE
       if(current_bed_type == "Total" | current_bed_type == "Units")
       {
         tot_val <- current_val
@@ -170,7 +176,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
       #every time we get to Total create new row
       if (at_total)
       {
-        #how can I do this for the different tables?
+        #adds row for Structure size table
         if(out_type == "Structure Size")
         {
           if (!five_ch)
@@ -183,7 +189,8 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
                        "Primary Rental Market", d_filter, "CMHC", update_str)
           
           in_master_table[nrow(in_master_table) + 1,] <- new_row
-          
+        
+          #adds row for Rent Ranges Table  
         } else if (out_type == "Rent Ranges")
         {
           
@@ -204,6 +211,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
           
           in_master_table[nrow(in_master_table) + 1,] <- new_row
           
+          #adds row for summary table
         } else if (out_type == "Summary Statistics")
         {
           if (!five_ch)
@@ -217,6 +225,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
                        "Primary Rental Market", d_filter, "CMHC", update_str)
           in_master_table[nrow(in_master_table) + 1,] <- new_row
           
+          #adds row for all other tables 
         } else
         {
           
@@ -233,6 +242,7 @@ build_table <- function(in_type, in_table, in_master_table, out_type)
       }
     }
   }
+  #return table that will overwrite the table for that type in main
   return(in_master_table)
 }
 
@@ -313,6 +323,7 @@ range_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/
 structure_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM_Structure_Size.csv"
 summary_file_name = "W:/mtic/vic/rpd/Workarea/ArcGIS_Online/OHCS/Data/Tables/CMHC/Primary_Rental_Market/Merged/CMHC_PRM_Sum_Stats.csv"
 
+#export tables
 write.csv(combined_R_CMHC, bed_file_name, row.names = FALSE)
 write.csv(range_R_CMHC, range_file_name, row.names = FALSE)
 write.csv(structure_R_CMHC, structure_file_name, row.names = FALSE)
